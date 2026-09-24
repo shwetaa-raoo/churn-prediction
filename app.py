@@ -169,6 +169,7 @@ with tab2:
     st.pyplot(fig)
 
     st.subheader("Feature Importance")
+    st.caption("Permutation importance on the held-out test set: how much ROC-AUC drops when a feature is shuffled.")
     img_path = os.path.join(MODEL_DIR, "feature_importance.png")
     if os.path.exists(img_path):
         st.image(img_path)

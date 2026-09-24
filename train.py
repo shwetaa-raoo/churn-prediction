@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from sklearn.compose import ColumnTransformer
+from sklearn.inspection import permutation_importance
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -156,20 +158,22 @@ def save_best(results, preprocessor, feature_names, schema, meta):
 
 # ── 6. Feature importance plot ───────────────────────────────────────────────
 
-def plot_feature_importance(model, feature_names, model_name):
-    if hasattr(model, "feature_importances_"):
-        importances = model.feature_importances_
-    elif hasattr(model, "coef_"):
-        importances = np.abs(model.coef_[0])
-    else:
-        return
+def plot_feature_importance(model, preprocessor, X_test_raw, y_test, model_name):
+    """Permutation importance: how much ROC-AUC drops on the held-out test set
+    when one raw feature is shuffled. Unlike coefficient sizes, it is comparable
+    across numeric and one-hot features (one-hot columns absorb part of a linear
+    model's baseline, which makes coefficients misleading) and works for any model."""
+    pipe = Pipeline([("pre", preprocessor), ("clf", model)])
+    result = permutation_importance(pipe, X_test_raw, y_test, scoring="roc_auc",
+                                    n_repeats=10, random_state=RANDOM_STATE, n_jobs=-1)
+    imp = (pd.Series(result.importances_mean, index=X_test_raw.columns)
+             .sort_values(ascending=False).head(15))
+    labels = imp.index.tolist()
 
-    indices = np.argsort(importances)[::-1][:15]
-    labels  = [feature_names[i] for i in indices]
     plt.figure(figsize=(10, 6))
-    sns.barplot(x=importances[indices], y=labels, hue=labels,
-                palette="viridis", legend=False)
-    plt.title(f"Top 15 Feature Importances — {model_name}")
+    sns.barplot(x=imp.values, y=labels, hue=labels, palette="viridis", legend=False)
+    plt.xlabel("Drop in ROC-AUC when the feature is shuffled")
+    plt.title(f"Top 15 Feature Importances (permutation) — {model_name}")
     plt.tight_layout()
     path = os.path.join(MODEL_DIR, "feature_importance.png")
     plt.savefig(path, dpi=150)
@@ -193,6 +197,8 @@ if __name__ == "__main__":
     baseline = max(y_test.mean(), 1 - y_test.mean())
     print(f"Majority-class baseline accuracy: {baseline:.4f}")
 
+    X_test_raw = X_test  # raw copy, needed for permutation importance
+
     # Fit encoding/scaling on the training split only, then apply to both splits
     preprocessor  = build_preprocessor(X_train)
     X_train       = preprocessor.fit_transform(X_train)
@@ -210,6 +216,6 @@ if __name__ == "__main__":
     meta = {"baseline_accuracy": float(baseline), "n_rows": int(len(df)),
             "churn_rate": float(y.mean())}
     best_name, best_model = save_best(results, preprocessor, feature_names, schema, meta)
-    plot_feature_importance(best_model, feature_names, best_name)
+    plot_feature_importance(best_model, preprocessor, X_test_raw, y_test, best_name)
 
     print("\nTraining complete! Run: streamlit run app.py")
