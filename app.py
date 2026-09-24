@@ -135,9 +135,11 @@ with tab2:
     comp_df.columns = ["Model", "Accuracy", "ROC-AUC", "Churn Recall", "Churn F1"]
     comp_df = comp_df.sort_values("ROC-AUC", ascending=False)
 
-    st.dataframe(comp_df.style.highlight_max(
-        subset=["Accuracy", "ROC-AUC", "Churn Recall", "Churn F1"], color="#d4edda"),
-        use_container_width=True)
+    metric_cols = ["Accuracy", "ROC-AUC", "Churn Recall", "Churn F1"]
+    styled = (comp_df.style
+              .format({c: "{:.3f}" for c in metric_cols})
+              .highlight_max(subset=metric_cols, color="#2e7d32"))  # dark green: readable on light and dark themes
+    st.dataframe(styled, hide_index=True)
     st.caption(
         f"Only {meta['churn_rate']:.0%} of customers churn, so always predicting \"no churn\" "
         f"already scores {meta['baseline_accuracy']:.1%} accuracy. Models are therefore ranked by "
@@ -169,6 +171,6 @@ with tab2:
     st.subheader("Feature Importance")
     img_path = os.path.join(MODEL_DIR, "feature_importance.png")
     if os.path.exists(img_path):
-        st.image(img_path, use_column_width=True)
+        st.image(img_path)
     else:
         st.info("Feature importance chart not found. Run train.py to generate it.")
