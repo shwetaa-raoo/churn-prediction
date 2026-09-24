@@ -4,22 +4,22 @@ app.py
 Streamlit dashboard: model comparison, feature importance, and
 an interactive form to predict churn for a new customer.
 
+The form is generated from models/input_schema.pkl (written by train.py),
+so it always matches the columns the model was trained on.
+
 Run with: streamlit run app.py
 """
 
 import os
 import joblib
-import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 
 from predict import predict_churn
 
-st.set_page_config(page_title="Customer Churn Predictor", page_icon="📉", layout="wide")
-st.title("📉 Customer Churn Prediction Dashboard")
-st.caption("Trained on Telco Customer Churn dataset · Random Forest / XGBoost / Logistic Regression")
+st.set_page_config(page_title="Telecom Churn Predictor", page_icon="📉", layout="wide")
+st.title("📉 Telecom Churn Prediction Dashboard")
 
 MODEL_DIR = "models"
 
@@ -28,9 +28,67 @@ if not os.path.exists(os.path.join(MODEL_DIR, "best_model.pkl")):
     st.error("No trained model found. Run `python train.py` first.")
     st.stop()
 
-# ── Load comparison results ───────────────────────────────────────────────────
-comparison  = joblib.load(os.path.join(MODEL_DIR, "model_comparison.pkl"))
-best_name   = joblib.load(os.path.join(MODEL_DIR, "best_model_name.pkl"))
+# ── Load training artifacts ───────────────────────────────────────────────────
+comparison = joblib.load(os.path.join(MODEL_DIR, "model_comparison.pkl"))
+best_name  = joblib.load(os.path.join(MODEL_DIR, "best_model_name.pkl"))
+schema     = joblib.load(os.path.join(MODEL_DIR, "input_schema.pkl"))
+meta       = joblib.load(os.path.join(MODEL_DIR, "training_meta.pkl"))
+
+st.caption(
+    f"Trained on a **synthetic** Indian telecom dataset ({meta['n_rows']:,} customers) · "
+    "Logistic Regression / Random Forest / Gradient Boosting. "
+    "Operator names are labels only; predictions are illustrative."
+)
+
+# ── Form layout ───────────────────────────────────────────────────────────────
+GROUPS = [
+    ("Customer profile", ["operator", "circle", "city_tier", "age", "gender",
+                          "device_type", "plan_type", "tenure_months"]),
+    ("Plan & recharge",  ["monthly_recharge_inr", "plan_validity_days",
+                          "days_since_last_recharge", "payment_channel",
+                          "ott_bundle", "recharge_change_pct"]),
+    ("Usage",            ["data_gb_month", "voice_minutes_month", "sms_per_month",
+                          "data_change_pct", "dual_sim"]),
+    ("Network experience", ["five_g_area", "call_drop_rate_pct",
+                            "network_complaints_3m", "care_calls_3m"]),
+]
+
+LABELS = {
+    "operator": "Operator", "circle": "Circle / State", "city_tier": "City Tier",
+    "age": "Age", "gender": "Gender", "device_type": "Device Type",
+    "plan_type": "Plan Type", "tenure_months": "Tenure (months)",
+    "monthly_recharge_inr": "Monthly Recharge (₹)",
+    "plan_validity_days": "Plan Validity (days)",
+    "days_since_last_recharge": "Days Since Last Recharge",
+    "payment_channel": "Payment Channel", "ott_bundle": "OTT Bundle",
+    "recharge_change_pct": "Recharge Change vs Last 3 Months (%)",
+    "data_gb_month": "Data Used (GB / month)",
+    "voice_minutes_month": "Voice Minutes / month", "sms_per_month": "SMS / month",
+    "data_change_pct": "Data Usage Change vs Last 3 Months (%)",
+    "dual_sim": "Also Uses Another SIM", "five_g_area": "5G Available in Area",
+    "call_drop_rate_pct": "Call Drop Rate (%)",
+    "network_complaints_3m": "Network Complaints (last 3 months)",
+    "care_calls_3m": "Customer Care Calls (last 3 months)",
+}
+
+
+def render_input(col: str, container):
+    """Draw the right widget for a column, based on the saved schema."""
+    label = LABELS.get(col, col.replace("_", " ").title())
+
+    if col in schema["categorical"]:
+        return container.selectbox(label, schema["categorical"][col])
+
+    spec = schema["numeric"][col]
+    if spec["kind"] == "binary":
+        return int(container.selectbox(label, ["No", "Yes"]) == "Yes")
+    if col == "tenure_months":
+        return container.slider(label, spec["min"], spec["max"], spec["default"])
+
+    step = 1 if spec["kind"] == "int" else 0.1
+    return container.number_input(label, min_value=spec["min"], max_value=spec["max"],
+                                  value=spec["default"], step=step)
+
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab2 = st.tabs(["🔍 Predict Churn", "📊 Model Performance"])
@@ -42,67 +100,12 @@ with tab1:
     st.subheader("Enter Customer Details")
     st.caption(f"Using best model: **{best_name}**")
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        gender          = st.selectbox("Gender", ["Male", "Female"])
-        senior          = st.selectbox("Senior Citizen", ["No", "Yes"])
-        partner         = st.selectbox("Has Partner", ["No", "Yes"])
-        dependents      = st.selectbox("Has Dependents", ["No", "Yes"])
-        tenure          = st.slider("Tenure (months)", 0, 72, 12)
-        phone_service   = st.selectbox("Phone Service", ["No", "Yes"])
-
-    with col2:
-        multiple_lines  = st.selectbox("Multiple Lines", ["No", "Yes", "No phone service"])
-        internet        = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
-        online_sec      = st.selectbox("Online Security", ["No", "Yes", "No internet service"])
-        online_backup   = st.selectbox("Online Backup", ["No", "Yes", "No internet service"])
-        device_prot     = st.selectbox("Device Protection", ["No", "Yes", "No internet service"])
-        tech_support    = st.selectbox("Tech Support", ["No", "Yes", "No internet service"])
-
-    with col3:
-        streaming_tv    = st.selectbox("Streaming TV", ["No", "Yes", "No internet service"])
-        streaming_mov   = st.selectbox("Streaming Movies", ["No", "Yes", "No internet service"])
-        contract        = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
-        paperless       = st.selectbox("Paperless Billing", ["No", "Yes"])
-        payment         = st.selectbox("Payment Method", [
-                            "Electronic check", "Mailed check",
-                            "Bank transfer (automatic)", "Credit card (automatic)"])
-        monthly         = st.number_input("Monthly Charges ($)", 0.0, 200.0, 65.0)
-        total           = st.number_input("Total Charges ($)", 0.0, 10000.0, 780.0)
-
-    # Encode inputs to match training encoding
-    encode = {
-        "No": 0, "Yes": 1,
-        "Male": 0, "Female": 1,
-        "DSL": 0, "Fiber optic": 1, "No": 2,
-        "No internet service": 2, "No phone service": 2,
-        "Month-to-month": 0, "One year": 1, "Two year": 2,
-        "Electronic check": 0, "Mailed check": 1,
-        "Bank transfer (automatic)": 2, "Credit card (automatic)": 3,
-    }
-
-    customer = {
-        "gender":            encode.get(gender, 0),
-        "SeniorCitizen":     encode.get(senior, 0),
-        "Partner":           encode.get(partner, 0),
-        "Dependents":        encode.get(dependents, 0),
-        "tenure":            tenure,
-        "PhoneService":      encode.get(phone_service, 0),
-        "MultipleLines":     encode.get(multiple_lines, 0),
-        "InternetService":   encode.get(internet, 0),
-        "OnlineSecurity":    encode.get(online_sec, 0),
-        "OnlineBackup":      encode.get(online_backup, 0),
-        "DeviceProtection":  encode.get(device_prot, 0),
-        "TechSupport":       encode.get(tech_support, 0),
-        "StreamingTV":       encode.get(streaming_tv, 0),
-        "StreamingMovies":   encode.get(streaming_mov, 0),
-        "Contract":          encode.get(contract, 0),
-        "PaperlessBilling":  encode.get(paperless, 0),
-        "PaymentMethod":     encode.get(payment, 0),
-        "MonthlyCharges":    monthly,
-        "TotalCharges":      total,
-    }
+    customer = {}
+    for title, cols in GROUPS:
+        st.markdown(f"**{title}**")
+        grid = st.columns(4)
+        for i, col in enumerate(cols):
+            customer[col] = render_input(col, grid[i % 4])
 
     if st.button("Predict Churn", type="primary"):
         result = predict_churn(customer)
@@ -116,7 +119,7 @@ with tab1:
         c3.metric("Retention Probability", f"{1-prob:.1%}")
 
         if risk == "High Risk":
-            st.error(f"⚠️ This customer is at **high risk** of churning ({prob:.1%}). Consider proactive retention offers.")
+            st.error(f"⚠️ This customer is at **high risk** of churning ({prob:.1%}). Consider a proactive retention offer, such as a bonus-data recharge.")
         elif risk == "Medium Risk":
             st.warning(f"🔶 This customer has **medium risk** of churning ({prob:.1%}). Monitor and engage.")
         else:
@@ -129,21 +132,35 @@ with tab2:
     st.subheader("Model Comparison")
 
     comp_df = pd.DataFrame(comparison).T.reset_index()
-    comp_df.columns = ["Model", "Accuracy", "ROC-AUC"]
+    comp_df.columns = ["Model", "Accuracy", "ROC-AUC", "Churn Recall", "Churn F1"]
     comp_df = comp_df.sort_values("ROC-AUC", ascending=False)
 
     st.dataframe(comp_df.style.highlight_max(
-        subset=["Accuracy", "ROC-AUC"], color="#d4edda"), use_container_width=True)
+        subset=["Accuracy", "ROC-AUC", "Churn Recall", "Churn F1"], color="#d4edda"),
+        use_container_width=True)
+    st.caption(
+        f"Only {meta['churn_rate']:.0%} of customers churn, so always predicting \"no churn\" "
+        f"already scores {meta['baseline_accuracy']:.1%} accuracy. Models are therefore ranked by "
+        "ROC-AUC, and churn recall shows how many actual churners are caught at a 0.5 cut-off. "
+        "The risk bands in the predictor use lower cut-offs to catch more of them."
+    )
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].bar(comp_df["Model"], comp_df["Accuracy"], color=["#2196F3","#4CAF50","#FF9800"])
+    colors = ["#2196F3", "#4CAF50", "#FF9800"]
+
+    axes[0].bar(comp_df["Model"], comp_df["Accuracy"], color=colors)
+    axes[0].axhline(meta["baseline_accuracy"], color="red", linestyle="--", linewidth=1,
+                    label="Always-predict-no-churn baseline")
     axes[0].set_title("Accuracy by Model")
-    axes[0].set_ylim(0.7, 1.0)
+    axes[0].set_ylim(0, 1.0)
+    axes[0].legend(loc="lower right", fontsize=8)
     axes[0].tick_params(axis="x", rotation=15)
 
-    axes[1].bar(comp_df["Model"], comp_df["ROC-AUC"], color=["#2196F3","#4CAF50","#FF9800"])
+    axes[1].bar(comp_df["Model"], comp_df["ROC-AUC"], color=colors)
+    axes[1].axhline(0.5, color="red", linestyle="--", linewidth=1, label="Random guessing")
     axes[1].set_title("ROC-AUC by Model")
-    axes[1].set_ylim(0.7, 1.0)
+    axes[1].set_ylim(0.4, 1.0)
+    axes[1].legend(loc="lower right", fontsize=8)
     axes[1].tick_params(axis="x", rotation=15)
 
     plt.tight_layout()
