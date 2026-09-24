@@ -1,4 +1,4 @@
-# Telecom Customer Churn Prediction System  **Live demo:** https://your-app-name.streamlit.app
+# Telecom Customer Churn Prediction System  **Live demo:** https://telecochurn-predictor.streamlit.app
 
 A machine learning system that predicts customer churn for an Indian telecom setting (prepaid and postpaid), with model comparison, feature importance analysis, and an interactive Streamlit dashboard.
 
