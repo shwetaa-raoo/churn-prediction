@@ -48,7 +48,7 @@ This will:
 - One-hot encode categoricals and scale numerics (fit on the training split only)
 - Train and compare 3 models (Logistic Regression, Random Forest, Gradient Boosting)
 - Save the best model, ranked by ROC-AUC
-- Generate a feature importance chart
+- Generate a permutation feature importance chart (drop in ROC-AUC when a feature is shuffled)
 
 **Step 3 — Launch the dashboard:**
 ```bash
